@@ -64,9 +64,44 @@ static constexpr SetStateData state_init_data = {
 
 SetStateData state{};
 static volatile bool hardware_mic_muted = false;
+static bool battery_light_ready = false;
+static uint8_t battery_light_index = 0xff;
+
+struct BatteryLightColor {
+    uint8_t red;
+    uint8_t green;
+    uint8_t blue;
+};
+
+// Low-brightness nine-step gradient imported from the user's PCXSense
+// light.txt: dark red -> amber -> green -> cyan -> blue.
+static constexpr BatteryLightColor battery_light_colors[] = {
+    {46, 0, 0},
+    {46, 5, 0},
+    {41, 18, 0},
+    {33, 26, 0},
+    {10, 33, 5},
+    {3, 33, 20},
+    {3, 31, 36},
+    {3, 23, 43},
+    {5, 15, 46},
+};
+
+static void apply_battery_light() {
+    if (!battery_light_ready) return;
+    const auto &color = battery_light_colors[battery_light_index];
+    state.AllowLedColor = 1;
+    state.AllowLightBrightnessChange = 1;
+    state.LedRed = color.red;
+    state.LedGreen = color.green;
+    state.LedBlue = color.blue;
+    state.LightBrightness = LightBrightness::Mid;
+}
 
 void state_init() {
     hardware_mic_muted = false;
+    battery_light_ready = false;
+    battery_light_index = 0xff;
     mute[1] = 0;
     state = state_init_data;
     state.VolumeSpeaker = get_config().speaker_volume;
@@ -98,6 +133,16 @@ void state_set_hardware_mic_muted(const bool muted) {
 
 bool state_hardware_mic_muted() {
     return hardware_mic_muted;
+}
+
+bool state_set_battery_light(const uint8_t power_percent) {
+    constexpr uint8_t max_index = sizeof(battery_light_colors) / sizeof(battery_light_colors[0]) - 1;
+    const uint8_t next_index = power_percent > max_index ? max_index : power_percent;
+    const bool changed = !battery_light_ready || next_index != battery_light_index;
+    battery_light_ready = true;
+    battery_light_index = next_index;
+    apply_battery_light();
+    return changed;
 }
 
 void state_update(const uint8_t *data, const uint8_t size) {
@@ -217,6 +262,10 @@ void state_update(const uint8_t *data, const uint8_t size) {
         state.LedGreen = update.LedGreen;
         state.LedBlue = update.LedBlue;
     }
+
+    // Battery indication is authoritative for the RGB lightbar. Steam and
+    // games may still control rumble, triggers and the separate mute LED.
+    apply_battery_light();
 }
 
 // for usbaudio SET_CUR cmd

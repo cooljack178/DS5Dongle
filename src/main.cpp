@@ -73,6 +73,14 @@ static void handle_hardware_mic_button(const uint8_t *report, const uint16_t len
     mute_button_was_down = button_down;
 }
 
+static void handle_battery_light(const uint8_t *report, const uint16_t len) {
+    // USBGetStateData byte 52 low nibble is the 0..10 battery capacity.
+    if (len <= 52) return;
+    if (state_set_battery_light(report[52] & 0x0f)) {
+        send_controller_state_now();
+    }
+}
+
 void __not_in_flash_func(interrupt_loop)() {
     if (!tud_hid_ready()) return;
 
@@ -127,6 +135,7 @@ void __not_in_flash_func(on_bt_data)(CHANNEL_TYPE channel, uint8_t *data, uint16
         }
 
         handle_hardware_mic_button(data + 3, len - 3);
+        handle_battery_light(data + 3, len - 3);
 
         // Wake-on-PS must observe every BT input report regardless of polling
         // mode: the wake feature has its own state to maintain (button-byte
