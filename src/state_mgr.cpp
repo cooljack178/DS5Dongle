@@ -7,6 +7,7 @@
 #include <cstring>
 
 #include "config.h"
+#include "usb.h"
 #include "utils.h"
 
 static constexpr SetStateData state_init_data = {
@@ -62,8 +63,11 @@ static constexpr SetStateData state_init_data = {
 };
 
 SetStateData state{};
+static volatile bool hardware_mic_muted = false;
 
 void state_init() {
+    hardware_mic_muted = false;
+    mute[1] = 0;
     state = state_init_data;
     state.VolumeSpeaker = get_config().speaker_volume;
     state.VolumeHeadphones = get_config().headset_volume;
@@ -81,6 +85,19 @@ void state_set(uint8_t *data, const uint8_t size) {
         printf("[StateMgr] Warning: State Set over 63 bytes\n");
     }
     memcpy(data, &state, size);
+}
+
+void state_set_hardware_mic_muted(const bool muted) {
+    hardware_mic_muted = muted;
+    mute[1] = muted ? 1 : 0;
+    state.AllowMuteLight = 1;
+    state.AllowAudioMute = 1;
+    state.MuteLightMode = muted ? MuteLight::On : MuteLight::Off;
+    state.MicMute = muted ? 1 : 0;
+}
+
+bool state_hardware_mic_muted() {
+    return hardware_mic_muted;
 }
 
 void state_update(const uint8_t *data, const uint8_t size) {
@@ -140,6 +157,15 @@ void state_update(const uint8_t *data, const uint8_t size) {
         state.SpeakerMute = update.SpeakerMute;
         state.HeadphoneMute = update.HeadphoneMute;
         state.HapticMute = update.HapticMute;
+    }
+
+    // The physical controller button is authoritative. Host output reports
+    // must not clear the controller-side mute or its orange indicator.
+    if (hardware_mic_muted) {
+        state.AllowMuteLight = 1;
+        state.AllowAudioMute = 1;
+        state.MuteLightMode = MuteLight::On;
+        state.MicMute = 1;
     }
 
     if (update.AllowRightTriggerFFB) {

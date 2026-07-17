@@ -9,6 +9,8 @@
 void state_init();
 void state_set(uint8_t *data, uint8_t size);
 void state_update(const uint8_t *data, uint8_t size);
+void state_set_hardware_mic_muted(bool muted);
+bool state_hardware_mic_muted();
 void set_volume(uint8_t value);
 void set_volume(uint8_t speaker, uint8_t headset);
 void set_trigger_reduce(uint8_t value);

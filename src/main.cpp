@@ -48,6 +48,30 @@ uint8_t interrupt_in_data[63] = {
 
 critical_section_t report_cs;
 volatile bool report_dirty = false;
+static bool mute_button_was_down = false;
+
+static void send_controller_state_now() {
+    uint8_t output_data[78]{};
+    output_data[0] = 0x31;
+    output_data[1] = reportSeqCounter << 4;
+    reportSeqCounter = (reportSeqCounter + 1) & 0xff;
+    output_data[2] = 0x10;
+    state_set(output_data + 3, sizeof(SetStateData));
+    bt_write(output_data, sizeof(output_data));
+}
+
+static void handle_hardware_mic_button(const uint8_t *report, const uint16_t len) {
+    // Common DualSense input report byte 9 bit 2 is the physical mic button.
+    if (len <= 9) return;
+    const bool button_down = (report[9] & (1u << 2)) != 0;
+    if (button_down && !mute_button_was_down) {
+        const bool muted = !state_hardware_mic_muted();
+        state_set_hardware_mic_muted(muted);
+        update_mic_status();
+        send_controller_state_now();
+    }
+    mute_button_was_down = button_down;
+}
 
 void __not_in_flash_func(interrupt_loop)() {
     if (!tud_hid_ready()) return;
@@ -101,6 +125,8 @@ void __not_in_flash_func(on_bt_data)(CHANNEL_TYPE channel, uint8_t *data, uint16
         if ((data[56] & 1) != (interrupt_in_data[53] & 1)) {
             set_headset(data[56] & 1);
         }
+
+        handle_hardware_mic_button(data + 3, len - 3);
 
         // Wake-on-PS must observe every BT input report regardless of polling
         // mode: the wake feature has its own state to maintain (button-byte

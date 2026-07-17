@@ -56,6 +56,9 @@ static bool audio10_set_req_entity(tusb_control_request_t const *p_request, uint
                         TU_VERIFY(p_request->wLength == 1);
 
                         mute[index] = pBuff[0];
+                        if (index == 1 && state_hardware_mic_muted()) {
+                            mute[index] = 1;
+                        }
 
                         TU_LOG2("    Set Mute: %d of entity: %u\r\n", mute[index], entityID);
                         return true;

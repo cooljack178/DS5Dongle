@@ -84,7 +84,9 @@ void update_mic_status() {
     reportSeqCounter = (reportSeqCounter + 1) & 0x0F;
     pkt[2] = 0x11 | 0 << 6 | 1 << 7;
     pkt[3] = 7;
-    pkt[4] = (mic_active && !get_config().disable_mic) ? 0b11111111 : 0b11111110;
+    pkt[4] = (mic_active && !get_config().disable_mic && !state_hardware_mic_muted())
+                 ? 0b11111111
+                 : 0b11111110;
     const auto buf_len = get_config().audio_buffer_length;
     pkt[5] = buf_len;
     pkt[6] = buf_len;
@@ -97,7 +99,7 @@ void update_mic_status() {
 
 void __not_in_flash_func(audio_loop)() {
     const Config_body &cfg = get_config();
-    const bool mic_enabled = mic_active && !cfg.disable_mic;
+    const bool mic_enabled = mic_active && !cfg.disable_mic && !state_hardware_mic_muted();
     const bool speaker_enabled = !cfg.disable_speaker;
 
     // Mic playback: drain decoded mic PCM into the USB IN endpoint
@@ -303,7 +305,7 @@ static void __not_in_flash_func(mic_proc)() {
     if (!queue_try_remove(&mic_fifo, &mic_packet)) {
         return;
     }
-    if (!mic_active || get_config().disable_mic) {
+    if (!mic_active || get_config().disable_mic || state_hardware_mic_muted()) {
         return;
     }
     static mic_decode_element decode_element{};
@@ -360,7 +362,7 @@ void __not_in_flash_func(core1_entry)() {
 // In RAM (consistent with the BT-receive path) and validates len so a short
 // or malformed report can't over-read past the packet buffer.
 void __not_in_flash_func(mic_add_queue)(uint8_t *data, uint16_t len) {
-    if (!mic_active || get_config().disable_mic) return;
+    if (!mic_active || get_config().disable_mic || state_hardware_mic_muted()) return;
     if (len < MIC_OPUS_SIZE) return;
     static mic_element mic_packet{};
     memcpy(mic_packet.data, data, MIC_OPUS_SIZE);
